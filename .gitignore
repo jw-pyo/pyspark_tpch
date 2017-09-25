@@ -1,1 +1,3 @@
+tpch/
+spark-warehouse/
 *.pyc

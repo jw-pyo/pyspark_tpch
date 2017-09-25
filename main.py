@@ -6,18 +6,41 @@ from pyspark.sql import SparkSession
 from pyspark.sql import SQLContext, Row
 from datetime import datetime
 import time as t
-
+import logging
+import logging.handlers
+import subprocess
+import shlex
+from StringIO import StringIO
 #project foler library
 from tpch_query import *
 from tpch_schema import *
 from util import *
 
 
-conf = (SparkConf().setAppName("DBhw1"))
+#PATH
+data_path="/data/tpch_sf100/"
+RESULT_PATH="./result_tpch100.txt"
+LOG_PATH="./memory_tpch100.log"
+
+#log
+logger = logging.getLogger('mylogger')
+fileHandler = logging.FileHandler(LOG_PATH)
+formatter = logging.Formatter('[%(levelname)s|%(filename)s:%(lineno)s] %(asctime)s > \n%(message)s')
+fileHandler.setFormatter(formatter)
+
+logger.addHandler(fileHandler)
+logger.setLevel(logging.DEBUG)
+
+logger.info("Before table loading\n\n"+ \
+                str(subprocess.check_output(['free', '-g'])))
+
+conf = SparkConf()
+#conf.setMaster("spark://kdb-spark:7731")
+conf.setAppName("DBhw1")
 conf.set("spark.driver.memory", "16g")
-conf.set("spark.executor.memory", "250g")
-conf.set("spark.ui.port", "33333")
-conf.set("spark.executor.cores", "48")
+conf.set("spark.executor.memory", "300g")
+#conf.set("spark.master", "spark://kdb-spark:7077")
+conf.set("spark.ui.port", "37041")
 #conf.set("spark.sql.shuffle.partitions", "200")
 spark = SparkSession.builder.config(conf=conf).getOrCreate()
 
@@ -25,31 +48,30 @@ sc = spark.sparkContext
 
 #data load and create each dataframe
 
-data_path="/nfs-data/datasets/tpch_sf100/"
 
-lineitem = sc.textFile(data_path+"lineitem.tbl").map(lambda l: l.split('|')) \
+lineitem = sc.textFile(DATA_PATH+"lineitem.tbl").map(lambda l: l.split('|')) \
         .map(lambda l: [int(l[0]),int(l[1]), int(l[2]), int(l[3]), float(l[4]), float(l[5]), float(l[6]), float(l[7]), str(l[8]), str(l[9]), datetime.strptime(l[10], "%Y-%m-%d"), datetime.strptime(l[11], "%Y-%m-%d"), datetime.strptime(l[12], '%Y-%m-%d'), str(l[13]), str(l[14]), str(l[15])])
 
-part = sc.textFile(data_path+"part.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]),str(l[1]), str(l[2]), str(l[3]), str(l[4]), int(l[5]), str(l[6]), float(l[7]), str(l[8])])
+part = sc.textFile(DATA_PATH+"part.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]),str(l[1]), str(l[2]), str(l[3]), str(l[4]), int(l[5]), str(l[6]), float(l[7]), str(l[8])])
 
-supplier = sc.textFile(data_path+"supplier.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]), str(l[1]), str(l[2]), int(l[3]), str(l[4]), float(l[5]), str(l[6])])
+supplier = sc.textFile(DATA_PATH+"supplier.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]), str(l[1]), str(l[2]), int(l[3]), str(l[4]), float(l[5]), str(l[6])])
 
-partsupp = sc.textFile(data_path+"partsupp.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]), int(l[1]), int(l[2]), float(l[3]), str(l[4])])
+partsupp = sc.textFile(DATA_PATH+"partsupp.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]), int(l[1]), int(l[2]), float(l[3]), str(l[4])])
 
-customer = sc.textFile(data_path+"customer.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]), str(l[1]), str(l[2]), int(l[3]), str(l[4]), float(l[5]), str(l[6]), str(l[7])])
+customer = sc.textFile(DATA_PATH+"customer.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]), str(l[1]), str(l[2]), int(l[3]), str(l[4]), float(l[5]), str(l[6]), str(l[7])])
 
-orders = sc.textFile(data_path+"orders.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]), int(l[1]), str(l[2]), float(l[3]), datetime.strptime(l[4], '%Y-%m-%d'), str(l[5]), str(l[6]), int(l[7]), str(l[8])])
+orders = sc.textFile(DATA_PATH+"orders.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]), int(l[1]), str(l[2]), float(l[3]), datetime.strptime(l[4], '%Y-%m-%d'), str(l[5]), str(l[6]), int(l[7]), str(l[8])])
 
-nation = sc.textFile(data_path+"nation.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]), str(l[1]), int(l[2]), str(l[3])])
+nation = sc.textFile(DATA_PATH+"nation.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]), str(l[1]), int(l[2]), str(l[3])])
 
-region = sc.textFile(data_path+"region.tbl").map(lambda l: l.split('|')) \
-                .map(lambda l: [int(l[0]), str(l[1]), str(l[2])])
+region = sc.textFile(DATA_PATH+"region.tbl").map(lambda l: l.split('|')) \
+               .map(lambda l: [int(l[0]), str(l[1]), str(l[2])])
 #register table
 df_lineitem = spark.createDataFrame(lineitem, schema_lineitem)
 df_lineitem.registerTempTable("lineitem")
@@ -83,12 +105,15 @@ df_region = spark.createDataFrame(region, schema_region)
 df_region.registerTempTable("region")
 df_region.cache().count()
 
+logger.info("After table loading\n\n"+str(subprocess.check_output(['free', '-g'])))
 #querying
-measure_time(q1, spark, "Q1")
-measure_time(q3, spark, "Q3")
-measure_time(q5, spark, "Q5")
-measure_time(q7, spark, "Q7")
-measure_time(q16, spark, "Q16")
-measure_time(q18, spark, "Q18")
-measure_time(q20, spark, "Q20")
-measure_time(q22, spark, "Q22")
+measure_time(q1, spark, "Q1", RESULT_PATH)
+logger.info("After executing Q1\n\n"+str(subprocess.check_output(['free', '-g'])))
+measure_time(q3, spark, "Q3", RESULT_PATH)
+measure_time(q5, spark, "Q5", RESULT_PATH)
+measure_time(q7, spark, "Q7", RESULT_PATH)
+measure_time(q16, spark, "Q16", RESULT_PATH)
+measure_time(q18, spark, "Q18", RESULT_PATH)
+measure_time(q20, spark, "Q20", RESULT_PATH)
+measure_time(q22, spark, "Q22", RESULT_PATH)
+logger.info("Finish executing all queries\n\n"+str(subprocess.check_output(['free', '-g'])))
